@@ -5,10 +5,11 @@ import { TimelineElement, TimelineTrack } from "@/types/timeline";
 import { useMediaStore, type MediaItem } from "@/stores/media-store";
 import { usePlaybackStore } from "@/stores/playback-store";
 import { useEditorStore } from "@/stores/editor-store";
+import { useObjectSelectionStore, type ClickCoordinate } from "@/stores/object-selection-store";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { AudioPlayer } from "@/components/ui/audio-player";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, Expand, SkipBack, SkipForward } from "lucide-react";
+import { Play, Pause, Expand, SkipBack, SkipForward, Target } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { formatTimeCode } from "@/lib/time";
@@ -38,6 +39,15 @@ export function PreviewPanel() {
   const { mediaItems } = useMediaStore();
   const { currentTime, toggle, setCurrentTime } = usePlaybackStore();
   const { activeProject } = useProjectStore();
+  const { 
+    isSelectionMode, 
+    isProcessingSelection,
+    selectedObjects,
+    setSelectionMode, 
+    addClickCoordinate, 
+    clearPendingClick,
+    getObjectsByVideo
+  } = useObjectSelectionStore();
   const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [previewDimensions, setPreviewDimensions] = useState({
@@ -229,6 +239,48 @@ export function PreviewPanel() {
   const toggleExpanded = useCallback(() => {
     setIsExpanded((prev) => !prev);
   }, []);
+
+  const handleVideoClick = useCallback((
+    e: React.MouseEvent<HTMLDivElement>, 
+    mediaItem: MediaItem,
+    element: TimelineElement
+  ) => {
+    if (!isSelectionMode || isProcessingSelection) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    // Convert click coordinates to relative coordinates (0-1 range)
+    const relativeX = clickX / rect.width;
+    const relativeY = clickY / rect.height;
+    
+    // Calculate current frame based on video timing
+    const videoCurrentTime = currentTime - element.startTime + element.trimStart;
+    const fps = mediaItem.fps || 30; // Default to 30fps if not available
+    const currentFrame = Math.floor(videoCurrentTime * fps);
+    
+    const clickCoordinate: ClickCoordinate = {
+      x: relativeX,
+      y: relativeY,
+      timestamp: currentTime,
+      frame: currentFrame,
+    };
+    
+    // Check if this is a semantic video (has videoId)
+    const semanticVideoId = (mediaItem as any).videoId;
+    if (semanticVideoId) {
+      addClickCoordinate(clickCoordinate, semanticVideoId);
+      console.log("Object selection click:", {
+        videoId: semanticVideoId,
+        coordinates: clickCoordinate,
+        elementId: element.id
+      });
+    }
+  }, [isSelectionMode, isProcessingSelection, currentTime, addClickCoordinate]);
 
   const hasAnyElements = tracks.some((track) => track.elements.length > 0);
   const getActiveElements = (): ActiveElement[] => {
@@ -424,10 +476,18 @@ export function PreviewPanel() {
 
       // Video elements
       if (mediaItem.type === "video") {
+        const semanticVideoId = (mediaItem as any).videoId;
+        const hasSemanticData = Boolean(semanticVideoId);
+        const videoObjects = hasSemanticData ? getObjectsByVideo(semanticVideoId) : [];
+        
         return (
           <div
             key={element.id}
-            className="absolute inset-0 flex items-center justify-center"
+            className={cn(
+              "absolute inset-0 flex items-center justify-center",
+              isSelectionMode && hasSemanticData && "cursor-crosshair"
+            )}
+            onClick={(e) => handleVideoClick(e, mediaItem, element)}
           >
             <VideoPlayer
               src={mediaItem.url!}
@@ -438,6 +498,63 @@ export function PreviewPanel() {
               clipDuration={element.duration}
               trackMuted={element.muted || elementData.track.muted}
             />
+            
+            {/* Object selection overlay */}
+            {isSelectionMode && hasSemanticData && (
+              <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded pointer-events-none flex items-center justify-center">
+                <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                  <Target size={12} />
+                  Click to select object
+                </div>
+              </div>
+            )}
+            
+            {/* Show segmented objects overlay */}
+            {videoObjects.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none">
+                {videoObjects.map(obj => {
+                  const isSelected = selectedObjects.some(selected => selected.id === obj.id);
+                  const currentFrameBox = obj.boundingBoxes.find(box => 
+                    Math.abs(box.frame - Math.floor((currentTime - element.startTime + element.trimStart) * (mediaItem.fps || 30))) < 2
+                  );
+                  
+                  if (!currentFrameBox) return null;
+                  
+                  return (
+                    <div
+                      key={obj.id}
+                      className={cn(
+                        "absolute border-2 rounded",
+                        isSelected ? "border-green-400 bg-green-400/20" : "border-blue-400 bg-blue-400/10"
+                      )}
+                      style={{
+                        left: `${currentFrameBox.x * 100}%`,
+                        top: `${currentFrameBox.y * 100}%`,
+                        width: `${currentFrameBox.width * 100}%`,
+                        height: `${currentFrameBox.height * 100}%`,
+                      }}
+                    >
+                      <div className={cn(
+                        "absolute -top-6 left-0 px-1 py-0.5 rounded text-xs",
+                        isSelected ? "bg-green-400 text-white" : "bg-blue-400 text-white"
+                      )}>
+                        {obj.name}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            
+            {/* Processing indicator */}
+            {isProcessingSelection && hasSemanticData && (
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <div className="bg-white rounded-lg p-4 text-center">
+                  <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                  <p className="text-sm">Processing selection...</p>
+                </div>
+              </div>
+            )}
           </div>
         );
       }
@@ -806,6 +923,7 @@ function PreviewToolbar({
 }) {
   const { isPlaying } = usePlaybackStore();
   const { layoutGuide, toggleLayoutGuide } = useEditorStore();
+  const { isSelectionMode, setSelectionMode } = useObjectSelectionStore();
 
   if (isExpanded) {
     return (
@@ -840,6 +958,18 @@ function PreviewToolbar({
           ) : (
             <Play className="h-3 w-3" />
           )}
+        </Button>
+        
+        {/* Object Selection Toggle */}
+        <Button
+          variant={isSelectionMode ? "default" : "text"}
+          size="icon"
+          onClick={() => setSelectionMode(!isSelectionMode)}
+          disabled={!hasAnyElements}
+          className="h-auto p-0"
+          title={isSelectionMode ? "Exit object selection mode" : "Enter object selection mode"}
+        >
+          <Target className={cn("h-3 w-3", isSelectionMode && "text-white")} />
         </Button>
         <Popover>
           <PopoverTrigger asChild>

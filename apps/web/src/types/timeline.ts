@@ -1,7 +1,7 @@
 import { MediaType } from "@/stores/media-store";
 import { generateUUID } from "@/lib/utils";
 
-export type TrackType = "media" | "text" | "audio";
+export type TrackType = "media" | "text" | "audio" | "object";
 
 // Base element properties
 interface BaseTimelineElement {
@@ -39,13 +39,25 @@ export interface TextElement extends BaseTimelineElement {
   opacity: number; // 0-1
 }
 
+// Object element for segmented objects
+export interface ObjectElement extends BaseTimelineElement {
+  type: "object";
+  objectId: string; // Reference to SegmentedObject
+  videoId: string; // Source video ID
+  confidence: number; // Segmentation confidence
+  visible?: boolean; // Whether object is visible (for editing operations)
+  operation?: "remove" | "reposition" | "recolor" | null; // Applied operation
+  operationParams?: Record<string, any>; // Operation-specific parameters
+}
+
 // Typed timeline elements
-export type TimelineElement = MediaElement | TextElement;
+export type TimelineElement = MediaElement | TextElement | ObjectElement;
 
 // Creation types (without id, for addElementToTrack)
 export type CreateMediaElement = Omit<MediaElement, "id">;
 export type CreateTextElement = Omit<TextElement, "id">;
-export type CreateTimelineElement = CreateMediaElement | CreateTextElement;
+export type CreateObjectElement = Omit<ObjectElement, "id">;
+export type CreateTimelineElement = CreateMediaElement | CreateTextElement | CreateObjectElement;
 
 export interface TimelineElementProps {
   element: TimelineElement;

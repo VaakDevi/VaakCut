@@ -1,2 +1,5 @@
 # Turborepo
 .turbo
+
+# GCP Service Account Keys
+vaakcut-storage-key.json

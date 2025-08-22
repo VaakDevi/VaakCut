@@ -15,8 +15,6 @@ export const env = createEnv({
       .default("development"),
     UPSTASH_REDIS_REST_URL: z.string().url(),
     UPSTASH_REDIS_REST_TOKEN: z.string(),
-    FREESOUND_CLIENT_ID: z.string(),
-    FREESOUND_API_KEY: z.string(),
     // R2 / Cloudflare
     CLOUDFLARE_ACCOUNT_ID: z.string(),
     R2_ACCESS_KEY_ID: z.string(),
@@ -32,8 +30,6 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
-    FREESOUND_CLIENT_ID: process.env.FREESOUND_CLIENT_ID,
-    FREESOUND_API_KEY: process.env.FREESOUND_API_KEY,
     // R2 / Cloudflare
     CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,

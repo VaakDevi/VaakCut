@@ -1,7 +1,7 @@
 "use client";
 
 import { useDragDrop } from "@/hooks/use-drag-drop";
-import { processMediaFiles } from "@/lib/media-processing";
+import { processMediaFiles, processSemanticVideoFiles } from "@/lib/media-processing";
 import { useMediaStore, type MediaItem } from "@/stores/media-store";
 import {
   ArrowDown01,
@@ -96,10 +96,24 @@ export function MediaView() {
     setIsProcessing(true);
     setProgress(0);
     try {
-      // Process files (extract metadata, generate thumbnails, etc.)
-      const processedItems = await processMediaFiles(files, (p) =>
-        setProgress(p)
-      );
+      // Check if any files are videos to determine processing method
+      const fileArray = Array.from(files);
+      const hasVideoFiles = fileArray.some(file => file.type.startsWith("video/"));
+      
+      let processedItems;
+      if (hasVideoFiles) {
+        // Use semantic video processing for video files
+        toast.info("Processing files for semantic video editing...");
+        processedItems = await processSemanticVideoFiles(files, (p) =>
+          setProgress(p)
+        );
+      } else {
+        // Use standard processing for non-video files
+        processedItems = await processMediaFiles(files, (p) =>
+          setProgress(p)
+        );
+      }
+      
       // Add each processed media item to the store
       for (const item of processedItems) {
         await addMediaItem(activeProject.id, item);
@@ -232,6 +246,29 @@ export function MediaView() {
               {item.duration && (
                 <div className="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded">
                   {formatDuration(item.duration)}
+                </div>
+              )}
+              {/* Show analysis status for semantic videos */}
+              {(item as any).analysisStatus && (
+                <div className="absolute top-1 left-1 bg-blue-600/90 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1">
+                  {(item as any).analysisStatus === "pending" && (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Analyzing
+                    </>
+                  )}
+                  {(item as any).analysisStatus === "processing" && (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Processing
+                    </>
+                  )}
+                  {(item as any).analysisStatus === "completed" && (
+                    <span className="text-green-400">✓ Ready</span>
+                  )}
+                  {(item as any).analysisStatus === "failed" && (
+                    <span className="text-red-400">✗ Failed</span>
+                  )}
                 </div>
               )}
             </div>
